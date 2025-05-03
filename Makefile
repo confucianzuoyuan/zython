@@ -1,10 +1,10 @@
 CFLAGS = -g
 OBJS = $(patsubst %.c, %.o, $(sort $(wildcard *.c)))
-TARGET = zyscript
+TARGET = zython
 
 all: ${TARGET}
 
-zyscript: ${OBJS}
+zython: ${OBJS}
 
 .PHONY: clean
 clean:

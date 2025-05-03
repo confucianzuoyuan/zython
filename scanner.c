@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "scanner.h"
-#include "zyscript.h"
+#include "zython.h"
 
 typedef struct {
   const char *start;
