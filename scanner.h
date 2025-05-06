@@ -1,7 +1,6 @@
 #pragma once
 
-typedef enum
-{
+typedef enum {
   TOKEN_LEFT_PAREN,     /* `(` */
   TOKEN_RIGHT_PAREN,    /* `)` */
   TOKEN_LEFT_BRACE,     /* `{` */
@@ -114,8 +113,7 @@ typedef enum
   TOKEN_ELLIPSIS, /* ... */
 } ZyTokenType;
 
-typedef struct
-{
+typedef struct {
   ZyTokenType type;
   const char *start;
   size_t length;
@@ -125,13 +123,12 @@ typedef struct
   size_t literalWidth;
 } ZyToken;
 
-typedef struct
-{
+typedef struct {
   const char *start;
   const char *cur;
   const char *linePtr;
   size_t line;
-  int startOfLines;
+  int startOfLine;
   int hasUnget;
   ZyToken unget;
 } ZyScanner;
