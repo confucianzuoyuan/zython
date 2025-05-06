@@ -6,45 +6,58 @@
 #include "scanner.h"
 #include "zython.h"
 
-typedef struct {
-  const char *start;
-  const char *current;
-  size_t line;
-  int start_of_line;
-} ZyScanner;
-
-ZyScanner scanner;
-
-void zy_initScanner(const char *src) {
+ZyScanner zy_initScanner(const char *src)
+{
+  ZyScanner scanner;
   scanner.start = src;
-  scanner.current = src;
+  scanner.cur = src;
   scanner.line = 1;
-  scanner.start_of_line = 1;
+  scanner.linePtr = src;
+  scanner.startOfLines = 1;
+  scanner.hasUnget = 0;
+  return scanner;
 }
 
-static int isAtEnd() { return *scanner.current == '\0'; }
+static int isAtEnd(const ZyScanner *scanner) { return *scanner->cur == '\0'; }
 
-static ZyToken makeToken(ZyTokenType type) {
+static void nextLine(ZyScanner *scanner)
+{
+  scanner->line++;
+  scanner->linePtr = scanner->cur;
+}
+
+static ZyToken makeToken(const ZyScanner *scanner, ZyTokenType type)
+{
   ZyToken t = {};
   t.type = type;
-  t.start = scanner.start;
-  t.length = (size_t)(scanner.current - scanner.start);
-  t.line = scanner.line;
+  t.start = scanner->start;
+  t.length = (type == TOKEN_EOL) ? 0 : (size_t)(scanner->cur - scanner->start);
+  t.line = scanner->line;
+  t.linePtr = scanner->linePtr;
+  t.literalWidth = (type == TOKEN_EOL) ? 0 : (size_t)(scanner->cur - scanner->linePtr);
+  t.col = (scanner->cur - scanner->linePtr) + 1;
   return t;
 }
 
-static ZyToken errorToken(const char *errorString) {
+static ZyToken errorToken(const ZyScanner *scanner, const char *errorStr)
+{
+  ssize_t column = (scanner->linePtr < scanner->start) ? scanner->start - scanner->linePtr : 0;
+  ssize_t width = (scanner->start < scanner->cur) ? scanner->cur - scanner->start : 0;
   ZyToken t = {};
   t.type = TOKEN_ERROR;
-  t.start = errorString;
-  t.length = strlen(errorString);
-  t.line = scanner.line;
+  t.start = errorStr;
+  t.length = strlen(errorStr);
+  t.line = scanner->line;
+  t.linePtr = scanner->linePtr;
+  t.literalWidth = (size_t)(width);
+  t.col = column + 1;
   return t;
 }
 
 static char advance() { return *(scanner.current++); }
 
-static int match(char expected) {
+static int match(char expected)
+{
   if (isAtEnd())
     return 0;
   if (*scanner.current != expected)
@@ -55,16 +68,20 @@ static int match(char expected) {
 
 static char peek() { return *scanner.current; }
 
-static char peekNext() {
+static char peekNext()
+{
   if (isAtEnd())
     return '\0';
   return scanner.current[1];
 }
 
-static void skipWhitespace() {
-  while (1) {
+static void skipWhitespace()
+{
+  while (1)
+  {
     char c = peek();
-    switch (c) {
+    switch (c)
+    {
     case ' ':
     case '\t':
       advance();
@@ -78,18 +95,22 @@ static void skipWhitespace() {
   }
 }
 
-static ZyToken makeIndentation() {
+static ZyToken makeIndentation()
+{
   while (!isAtEnd() && peek() == ' ')
     advance();
-  if (peek() == '\n') {
+  if (peek() == '\n')
+  {
     return errorToken("Empty indentation line is invalid.");
   }
 
   return makeToken(TOKEN_INDENTATION);
 }
 
-static ZyToken string() {
-  while (peek() != '"' && !isAtEnd()) {
+static ZyToken string()
+{
+  while (peek() != '"' && !isAtEnd())
+  {
     if (peek() == '\\')
       advance();
     if (peek() == '\n')
@@ -105,8 +126,10 @@ static ZyToken string() {
   return makeToken(TOKEN_STRING);
 }
 
-static ZyToken codepoint() {
-  while (peek() != '\'' && !isAtEnd()) {
+static ZyToken codepoint()
+{
+  while (peek() != '\'' && !isAtEnd())
+  {
     if (peek() == '\\')
       advance();
     if (peek() == '\n')
@@ -125,14 +148,19 @@ static ZyToken codepoint() {
 
 static int isDigit(char c) { return c >= '0' && c <= '9'; }
 
-static ZyToken number(char c) {
-  if (c == 0) {
+static ZyToken number(char c)
+{
+  if (c == 0)
+  {
     /* 16进制 */
-    if (peek() == 'x' || peek() == 'X') {
+    if (peek() == 'x' || peek() == 'X')
+    {
       advance();
-      do {
+      do
+      {
         char n = peek();
-        if (isDigit(n) || (n >= 'a' && n <= 'f') || (n >= 'A' && n <= 'F')) {
+        if (isDigit(n) || (n >= 'a' && n <= 'f') || (n >= 'A' && n <= 'F'))
+        {
           advance();
           continue;
         }
@@ -141,7 +169,8 @@ static ZyToken number(char c) {
     }
 
     /* 2进制 */
-    if (peek() == 'b' || peek() == 'B') {
+    if (peek() == 'b' || peek() == 'B')
+    {
       advance();
       while (peek() == '0' || peek() == '1')
         advance();
@@ -159,7 +188,8 @@ static ZyToken number(char c) {
     advance();
 
   /* 浮点数 */
-  if (peek() == '.' && isDigit(peekNext())) {
+  if (peek() == '.' && isDigit(peekNext()))
+  {
     advance();
     while (isDigit(peek()))
       advance();
@@ -168,11 +198,13 @@ static ZyToken number(char c) {
   return makeToken(TOKEN_NUMBER);
 }
 
-static int isAlpha(char c) {
+static int isAlpha(char c)
+{
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_');
 }
 
-static int checkKeyword(size_t start, const char *rest, ZyTokenType type) {
+static int checkKeyword(size_t start, const char *rest, ZyTokenType type)
+{
   size_t length = strlen(rest);
   if (scanner.current - scanner.start == start + length &&
       memcmp(scanner.start, rest, length) == 0)
@@ -180,8 +212,10 @@ static int checkKeyword(size_t start, const char *rest, ZyTokenType type) {
   return TOKEN_IDENTIFIER;
 }
 
-static ZyTokenType identifierType() {
-  switch (*scanner.start) {
+static ZyTokenType identifierType()
+{
+  switch (*scanner.start)
+  {
   case 'a':
     return checkKeyword(1, "nd", TOKEN_AND);
   case 'c':
@@ -196,7 +230,8 @@ static ZyTokenType identifierType() {
     return checkKeyword(1, "alse", TOKEN_FALSE);
   case 'i':
     if (scanner.current - scanner.start > 1)
-      switch (scanner.start[1]) {
+      switch (scanner.start[1])
+      {
       case 'f':
         return checkKeyword(2, "f", TOKEN_IF);
       case 'n':
@@ -217,7 +252,8 @@ static ZyTokenType identifierType() {
     return checkKeyword(1, "eturn", TOKEN_RETURN);
   case 's':
     if (scanner.current - scanner.start > 1)
-      switch (scanner.start[1]) {
+      switch (scanner.start[1])
+      {
       case 'e':
         return checkKeyword(2, "lf", TOKEN_SELF);
       case 'u':
@@ -228,19 +264,24 @@ static ZyTokenType identifierType() {
   return TOKEN_IDENTIFIER;
 }
 
-static ZyToken identifier() {
+static ZyToken identifier()
+{
   while (isAlpha(peek()) || isDigit(peek()))
     advance();
 
   return makeToken(identifierType());
 }
 
-ZyToken zy_scanToken() {
+ZyToken zy_scanToken()
+{
   /* 如果是行的开头，则看一下有没有缩进 */
-  if (scanner.start && peek() == ' ') {
+  if (scanner.start && peek() == ' ')
+  {
     scanner.start = scanner.current;
     return makeIndentation();
-  } else {
+  }
+  else
+  {
     scanner.start_of_line = 0;
   }
 
@@ -264,7 +305,8 @@ ZyToken zy_scanToken() {
   if (isDigit(c))
     return number(c);
 
-  switch (c) {
+  switch (c)
+  {
   case '(':
     return makeToken(TOKEN_LEFT_PAREN);
   case ')':
