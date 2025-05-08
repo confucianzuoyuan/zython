@@ -169,47 +169,51 @@ static ZyToken string(ZyScanner *scanner, char quoteMark) {
 
 static int isDigit(char c) { return c >= '0' && c <= '9'; }
 
-static ZyToken number(char c) {
-  if (c == 0) {
+static ZyToken number(ZyScanner *scanner, char c) {
+  if (c == '0') {
     /* 16进制 */
-    if (peek() == 'x' || peek() == 'X') {
-      advance();
-      do {
-        char n = peek();
-        if (isDigit(n) || (n >= 'a' && n <= 'f') || (n >= 'A' && n <= 'F')) {
-          advance();
-          continue;
-        }
-      } while (0);
-      return makeToken(TOKEN_NUMBER);
-    }
+    if (peek(scanner) == 'x' || peek(scanner) == 'X') {
+      advance(scanner);
+      while (isDigit(peek(scanner)) ||
+             (peek(scanner) >= 'a' && peek(scanner) <= 'f') ||
+             (peek(scanner) >= 'A' && peek(scanner) <= 'F') ||
+             (peek(scanner) == '_'))
+        advance(scanner);
 
+      return makeToken(scanner, TOKEN_NUMBER);
+    }
     /* 2进制 */
-    if (peek() == 'b' || peek() == 'B') {
-      advance();
-      while (peek() == '0' || peek() == '1')
-        advance();
-      return makeToken(TOKEN_NUMBER);
+    else if (peek(scanner) == 'b' || peek(scanner) == 'B') {
+      advance(scanner);
+      while (peek(scanner) == '0' || peek(scanner) == '1' ||
+             peek(scanner) == '_')
+        advance(scanner);
+      return makeToken(scanner, TOKEN_NUMBER);
     }
 
-    /* 8进制 */
-    while (peek() >= '0' && peek() <= '7')
-      advance();
-    return makeToken(TOKEN_NUMBER);
+    /* 8进制，必须是0o开头，0123这种不合法 */
+    if (peek(scanner) == 'o' || peek(scanner) == 'O') {
+      advance(scanner);
+      while ((peek(scanner) >= '0' && peek(scanner) <= '7') ||
+             (peek(scanner) == '_'))
+        advance(scanner);
+      return makeToken(scanner, TOKEN_NUMBER);
+    }
+    /* 否则，要不就是十进制，要么就是0.123这种浮点数 */
   }
 
   /* 10进制 */
-  while (isDigit(peek()))
-    advance();
+  while (isDigit(peek(scanner)) || peek(scanner) == '_')
+    advance(scanner);
 
   /* 浮点数 */
-  if (peek() == '.' && isDigit(peekNext())) {
-    advance();
-    while (isDigit(peek()))
-      advance();
+  if (peek(scanner) == '.' && isDigit(peekNext(scanner, 1))) {
+    advance(scanner);
+    while (isDigit(peek(scanner)))
+      advance(scanner);
   }
 
-  return makeToken(TOKEN_NUMBER);
+  return makeToken(scanner, TOKEN_NUMBER);
 }
 
 static int isAlpha(char c) {
@@ -249,11 +253,39 @@ static ZyTokenType identifierType(ZyScanner *scanner) {
       }
       break;
     }
-    return checkKeyword(1, "nd", TOKEN_AND);
+  case 'b':
+    if (scanner->cur - scanner->start > 1) {
+      return checkKeyword(scanner, 1, "reak", TOKEN_BREAK);
+    } else if (scanner->start[1] == '\'' || scanner->start[1] == '"') {
+      return TOKEN_PREFIX_B;
+    }
+    break;
   case 'c':
-    return checkKeyword(1, "lass", TOKEN_CLASS);
+    if (scanner->cur - scanner->start > 1) {
+      switch (scanner->start[1]) {
+      case 'l':
+        return checkKeyword(scanner, 2, "ass", TOKEN_CLASS);
+      case 'o':
+        return checkKeyword(scanner, 2, "ntinue", TOKEN_CONTINUE);
+      }
+    }
+    break;
   case 'd':
-    return checkKeyword(1, "ef", TOKEN_DEF);
+    if (scanner->cur - scanner->start > 1) {
+      switch (scanner->start[1]) {
+      case 'e':
+        if (scanner->cur - scanner->start > 2) {
+          switch (scanner->start[2]) {
+          case 'f':
+            return checkKeyword(scanner, 3, "", TOKEN_DEF);
+          case 'l':
+            return checkKeyword(scanner, 3, "", TOKEN_DEL);
+          }
+        }
+        break;
+      }
+    }
+    break;
   case 'e':
     return checkKeyword(1, "lse", TOKEN_ELSE);
   case 'f':
