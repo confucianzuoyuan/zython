@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "scanner.h"
@@ -213,6 +214,16 @@ static ZyToken number(ZyScanner *scanner, char c) {
       advance(scanner);
   }
 
+  /* 科学记数法 */
+  if (peek(scanner) == 'e' || peek(scanner) == 'E') {
+    advance(scanner);
+    if (peek(scanner) == '+' || peek(scanner) == '-')
+      advance(scanner);
+    while (isDigit(peek(scanner))) {
+      advance(scanner);
+    }
+  }
+
   return makeToken(scanner, TOKEN_NUMBER);
 }
 
@@ -287,123 +298,290 @@ static ZyTokenType identifierType(ZyScanner *scanner) {
     }
     break;
   case 'e':
-    return checkKeyword(1, "lse", TOKEN_ELSE);
+    if (scanner->cur - scanner->start > 1) {
+      switch (scanner->start[1]) {
+      case 'l':
+        if (scanner->cur - scanner->start > 2) {
+          switch (scanner->start[2]) {
+          case 's':
+            return checkKeyword(scanner, 3, "e", TOKEN_ELSE);
+          case 'i':
+            return checkKeyword(scanner, 3, "f", TOKEN_ELIF);
+          }
+        }
+        break;
+      case 'x':
+        return checkKeyword(scanner, 2, "cept", TOKEN_EXCEPT);
+      }
+    }
   case 'f':
-    return checkKeyword(1, "or", TOKEN_FOR);
+    if (scanner->cur - scanner->start > 1) {
+      switch (scanner->start[1]) {
+      case 'i':
+        return checkKeyword(scanner, 2, "nally", TOKEN_FINALLY);
+      case 'o':
+        return checkKeyword(scanner, 2, "r", TOKEN_FOR);
+      case 'r':
+        return checkKeyword(scanner, 2, "om", TOKEN_FROM);
+      }
+    } else if (scanner->start[1] == '\'' || scanner->start[1] == '"') {
+      return TOKEN_PREFIX_F;
+    }
   case 'F':
-    return checkKeyword(1, "alse", TOKEN_FALSE);
+    return checkKeyword(scanner, 1, "alse", TOKEN_FALSE);
   case 'i':
-    if (scanner.current - scanner.start > 1)
-      switch (scanner.start[1]) {
+    if (scanner->cur - scanner->start > 1) {
+      switch (scanner->start[1]) {
       case 'f':
-        return checkKeyword(2, "f", TOKEN_IF);
+        return checkKeyword(scanner, 2, "", TOKEN_IF);
       case 'n':
-        return checkKeyword(2, "n", TOKEN_IN);
+        return checkKeyword(scanner, 2, "", TOKEN_IN);
+      case 'm':
+        return checkKeyword(scanner, 2, "port", TOKEN_IMPORT);
+      case 's':
+        return checkKeyword(scanner, 2, "", TOKEN_IS);
       }
-    break;
+      break;
+    }
+  case 'g':
+    return checkKeyword(scanner, 1, "lobal", TOKEN_GLOBAL);
   case 'l':
-    return checkKeyword(1, "et", TOKEN_LET);
+    return checkKeyword(scanner, 1, "ambda", TOKEN_LAMBDA);
   case 'n':
-    return checkKeyword(1, "ot", TOKEN_NOT);
+    return checkKeyword(scanner, 1, "ot", TOKEN_NOT);
   case 'N':
-    return checkKeyword(1, "one", TOKEN_NONE);
+    return checkKeyword(scanner, 1, "one", TOKEN_NONE);
   case 'o':
-    return checkKeyword(1, "r", TOKEN_OR);
+    return checkKeyword(scanner, 1, "r", TOKEN_OR);
   case 'p':
-    return checkKeyword(1, "rint", TOKEN_PRINT);
+    return checkKeyword(scanner, 1, "ass", TOKEN_PASS);
   case 'r':
-    return checkKeyword(1, "eturn", TOKEN_RETURN);
-  case 's':
-    if (scanner.current - scanner.start > 1)
-      switch (scanner.start[1]) {
+    if (scanner->cur - scanner->start > 1) {
+      switch (scanner->start[1]) {
       case 'e':
-        return checkKeyword(2, "lf", TOKEN_SELF);
-      case 'u':
-        return checkKeyword(2, "per", TOKEN_SUPER);
+        return checkKeyword(scanner, 2, "turn", TOKEN_RETURN);
+      case 'a':
+        return checkKeyword(scanner, 2, "ise", TOKEN_RAISE);
       }
+    } else if (scanner->start[1] == '\'' || scanner->start[1] == '"') {
+      return TOKEN_PREFIX_R;
+    }
+  case 's':
+    return checkKeyword(scanner, 1, "uper", TOKEN_SUPER);
+  case 't':
+    return checkKeyword(scanner, 1, "ry", TOKEN_TRY);
+  case 'T':
+    return checkKeyword(scanner, 1, "rue", TOKEN_TRUE);
+  case 'w':
+    if (scanner->cur - scanner->start > 1) {
+      switch (scanner->start[1]) {
+      case 'h':
+        return checkKeyword(scanner, 2, "ile", TOKEN_WHILE);
+      case 'i':
+        return checkKeyword(scanner, 2, "th", TOKEN_WITH);
+      }
+    }
+    break;
+  case 'y':
+    return checkKeyword(scanner, 1, "ield", TOKEN_YIELD);
   }
 
   return TOKEN_IDENTIFIER;
 }
 
-static ZyToken identifier() {
-  while (isAlpha(peek()) || isDigit(peek()))
-    advance();
+static ZyToken identifier(ZyScanner *scanner) {
+  while (isAlpha(peek(scanner)) || isDigit(peek(scanner)) ||
+         (unsigned char)peek(scanner) > 0x7F)
+    advance(scanner);
 
-  return makeToken(identifierType());
+  return makeToken(scanner, identifierType(scanner));
 }
 
-ZyToken zy_scanToken() {
+void zy_ungetToken(ZyScanner *scanner, ZyToken token) {
+  if (scanner->hasUnget)
+    abort();
+
+  scanner->hasUnget = 1;
+  scanner->unget = token;
+}
+
+ZyScanner zy_tellScanner(ZyScanner *scanner) { return *scanner; }
+
+void zy_rewindScanner(ZyScanner *scanner, ZyScanner to) { *scanner = to; }
+
+ZyToken zy_scanToken(ZyScanner *scanner) {
+  if (scanner->hasUnget) {
+    scanner->hasUnget = 0;
+    return scanner->unget;
+  }
+
   /* 如果是行的开头，则看一下有没有缩进 */
-  if (scanner.start && peek() == ' ') {
-    scanner.start = scanner.current;
-    return makeIndentation();
-  } else {
-    scanner.start_of_line = 0;
+  if (scanner->startOfLine && peek(scanner) == ' ' || peek(scanner) == '\t') {
+    scanner->start = scanner->cur;
+    return makeIndentation(scanner);
   }
 
   /* 跳过空白符 */
-  skipWhitespace();
+  skipWhitespace(scanner);
 
   /* 跳过注释 */
-  if (peek() == '#')
-    while (peek() != '\n' && !isAtEnd())
-      advance();
+  if (peek(scanner) == '#')
+    while (peek(scanner) != '\n' && !isAtEnd(scanner))
+      advance(scanner);
 
-  scanner.start = scanner.current;
+  scanner->start = scanner->cur;
 
-  if (isAtEnd())
-    return makeToken(TOKEN_EOF);
+  if (isAtEnd(scanner))
+    return makeToken(scanner, TOKEN_EOF);
 
-  char c = advance();
+  char c = advance(scanner);
 
-  if (isAlpha(c))
-    return identifier();
+  if (c == '\n') {
+    ZyToken out;
+    if (scanner->startOfLine) {
+      /* 忽略掉完整的空行 */
+      out = makeToken(scanner, TOKEN_RETRY);
+    } else {
+      scanner->startOfLine = 1;
+      out = makeToken(scanner, TOKEN_EOL);
+    }
+    nextLine(scanner);
+    return out;
+  }
+
+  if (c == '\\' && peek(scanner) == '\n') {
+    advance(scanner);
+    nextLine(scanner);
+    return makeToken(scanner, TOKEN_RETRY);
+  }
+
+  scanner->startOfLine = 0;
+
+  if (isAlpha(c) || (unsigned char)c > 0x7F)
+    return identifier(scanner);
   if (isDigit(c))
-    return number(c);
+    return number(scanner, c);
 
   switch (c) {
   case '(':
-    return makeToken(TOKEN_LEFT_PAREN);
+    return makeToken(scanner, TOKEN_LEFT_PAREN);
   case ')':
-    return makeToken(TOKEN_RIGHT_PAREN);
+    return makeToken(scanner, TOKEN_RIGHT_PAREN);
   case '{':
-    return makeToken(TOKEN_LEFT_BRACE);
+    return makeToken(scanner, TOKEN_LEFT_BRACE);
   case '}':
-    return makeToken(TOKEN_RIGHT_BRACE);
+    return makeToken(scanner, TOKEN_RIGHT_BRACE);
   case '[':
-    return makeToken(TOKEN_LEFT_SQUARE);
+    return makeToken(scanner, TOKEN_LEFT_SQUARE);
   case ']':
-    return makeToken(TOKEN_RIGHT_SQUARE);
-  case ':':
-    return makeToken(TOKEN_COLON);
+    return makeToken(scanner, TOKEN_RIGHT_SQUARE);
   case ',':
-    return makeToken(TOKEN_COMMA);
-  case '.':
-    return makeToken(TOKEN_DOT);
-  case '-':
-    return makeToken(TOKEN_MINUS);
-  case '+':
-    return makeToken(TOKEN_PLUS);
+    return makeToken(scanner, TOKEN_COMMA);
   case ';':
-    return makeToken(TOKEN_SEMICOLON);
-  case '/':
-    return makeToken(TOKEN_SOLIDUS);
-  case '*':
-    return makeToken(TOKEN_ASTERISK);
-  case '!':
-    return makeToken(match('=') ? TOKEN_BANG_EQUAL : TOKEN_BANG);
-  case '=':
-    return makeToken(match('=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
+    return makeToken(scanner, TOKEN_SEMICOLON);
+  case '~':
+    return makeToken(scanner, TOKEN_TILDE);
+  case '.':
+    if (peek(scanner) == '.') {
+      if (peekNext(scanner, 1) == '.') {
+        advance(scanner);
+        advance(scanner);
+        return makeToken(scanner, TOKEN_ELLIPSIS);
+      } else {
+        return makeToken(scanner, TOKEN_DOT);
+      }
+    } else {
+      return makeToken(scanner, TOKEN_DOT);
+    }
+  case ':':
+    if (match(scanner, '=')) {
+      return makeToken(scanner, TOKEN_WALRUS);
+    } else {
+      return makeToken(scanner, TOKEN_COLON);
+    }
+  case '^':
+    if (match(scanner, '=')) {
+      return makeToken(scanner, TOKEN_CARET_EQUAL);
+    } else {
+      return makeToken(scanner, TOKEN_CARET);
+    }
   case '<':
-    return makeToken(match('=') ? TOKEN_LESS_EQUAL : TOKEN_LESS);
+    if (match(scanner, '=')) {
+      return makeToken(scanner, TOKEN_LESS_EQUAL);
+    } else {
+      return makeToken(scanner, TOKEN_LESS);
+    }
   case '>':
-    return makeToken(match('=') ? TOKEN_GREATER_EQUAL : TOKEN_GREATER);
+    if (match(scanner, '=')) {
+      return makeToken(scanner, TOKEN_GREATER_EQUAL);
+    } else {
+      return makeToken(scanner, TOKEN_GREATER);
+    }
+  case '=':
+    if (match(scanner, '=')) {
+      return makeToken(scanner, TOKEN_EQUAL_EQUAL);
+    } else {
+      return makeToken(scanner, TOKEN_EQUAL);
+    }
+  case '!':
+    if (match(scanner, '=')) {
+      return makeToken(scanner, TOKEN_BANG_EQUAL);
+    } else {
+      return makeToken(scanner, TOKEN_BANG);
+    }
+  case '|':
+    if (match(scanner, '=')) {
+      return makeToken(scanner, TOKEN_PIPE_EQUAL);
+    } else {
+      return makeToken(scanner, TOKEN_PIPE);
+    }
+  case '&':
+    if (match(scanner, '=')) {
+      return makeToken(scanner, TOKEN_AMP_EQUAL);
+    } else {
+      return makeToken(scanner, TOKEN_AMPERSAND);
+    }
+  case '-':
+    if (match(scanner, '=')) {
+      return makeToken(scanner, TOKEN_MINUS_EQUAL);
+    } else {
+      return makeToken(scanner, TOKEN_MINUS);
+    }
+  case '+':
+    if (match(scanner, '=')) {
+      return makeToken(scanner, TOKEN_PLUS_EQUAL);
+    } else {
+      return makeToken(scanner, TOKEN_PLUS);
+    }
+  case '/':
+    if (match(scanner, '=')) {
+      return makeToken(scanner, TOKEN_SOLIDUS_EQUAL);
+    } else {
+      return makeToken(scanner, TOKEN_SOLIDUS);
+    }
+  case '*':
+    if (match(scanner, '=')) {
+      return makeToken(scanner, TOKEN_ASTERISK_EQUAL);
+    } else {
+      return makeToken(scanner, TOKEN_ASTERISK);
+    }
+  case '%':
+    if (match(scanner, '=')) {
+      return makeToken(scanner, TOKEN_MODULO_EQUAL);
+    } else {
+      return makeToken(scanner, TOKEN_MODULO);
+    }
+  case '@':
+    if (match(scanner, '=')) {
+      return makeToken(scanner, TOKEN_AT_EQUAL);
+    } else {
+      return makeToken(scanner, TOKEN_AT);
+    }
   case '"':
-    return string();
+    return string(scanner, '"');
   case '\'':
-    return codepoint();
+    return string(scanner, '\'');
   }
 
-  return errorToken("Unexpected character.");
+  return errorToken(scanner, "Unexpected character.");
 }

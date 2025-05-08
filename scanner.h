@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stddef.h>
 typedef enum {
   TOKEN_LEFT_PAREN,     /* `(` */
   TOKEN_RIGHT_PAREN,    /* `)` */
@@ -70,12 +71,12 @@ typedef enum {
   TOKEN_DEL,        /* del */
   TOKEN_ELSE,       /* else */
   TOKEN_FALSE,      /* False */
+  TOKEN_FINALLY,    /* finally */
   TOKEN_FOR,        /* for */
   TOKEN_IF,         /* if */
   TOKEN_IMPORT,     /* import */
   TOKEN_IN,         /* in */
   TOKEN_IS,         /* is */
-  TOKEN_LET,        /* let */
   TOKEN_NONE,       /* None */
   TOKEN_NOT,        /* not */
   TOKEN_OR,         /* or */
@@ -98,6 +99,7 @@ typedef enum {
   TOKEN_ASYNC,      /* async */
   TOKEN_AWAIT,      /* await */
   TOKEN_WITH,       /* with */
+  TOKEN_GLOBAL,     /* global */
 
   TOKEN_PREFIX_B,
   TOKEN_PREFIX_F,
