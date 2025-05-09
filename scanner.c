@@ -5,7 +5,6 @@
 #include <string.h>
 
 #include "scanner.h"
-#include "zython.h"
 
 ZyScanner zy_initScanner(const char *src) {
   ZyScanner scanner;
@@ -348,6 +347,21 @@ static ZyTokenType identifierType(ZyScanner *scanner) {
   case 'l':
     return checkKeyword(scanner, 1, "ambda", TOKEN_LAMBDA);
   case 'n':
+    if (scanner->cur - scanner->start > 1) {
+      switch (scanner->start[1]) {
+      case 'o':
+        if (scanner->cur - scanner->start > 2) {
+          switch (scanner->start[2]) {
+          case 't':
+            return checkKeyword(scanner, 3, "", TOKEN_NOT);
+          case 'n':
+            return checkKeyword(scanner, 3, "local", TOKEN_NONLOCAL);
+          }
+        }
+        break;
+      }
+      break;
+    }
     return checkKeyword(scanner, 1, "ot", TOKEN_NOT);
   case 'N':
     return checkKeyword(scanner, 1, "one", TOKEN_NONE);
@@ -624,6 +638,7 @@ void printToken(ZyToken t) {
   case TOKEN_WHILE:
   case TOKEN_RAISE:
   case TOKEN_LAMBDA:
+  case TOKEN_NONLOCAL:
     printf("\033[38;5;214m关键字\033[0m：");
     break;
   case TOKEN_LEFT_PAREN:

@@ -100,6 +100,7 @@ typedef enum {
   TOKEN_AWAIT,      /* await */
   TOKEN_WITH,       /* with */
   TOKEN_GLOBAL,     /* global */
+  TOKEN_NONLOCAL,   /* nonlocal */
 
   TOKEN_PREFIX_B,
   TOKEN_PREFIX_F,
