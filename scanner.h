@@ -140,3 +140,4 @@ extern ZyToken zy_scanToken(ZyScanner *);
 extern void zy_ungetToken(ZyScanner *, ZyToken token);
 extern void zy_rewindScanner(ZyScanner *, ZyScanner to);
 extern ZyScanner zy_tellScanner(ZyScanner *);
+extern void printToken(ZyToken t);
